@@ -122,4 +122,17 @@ contract DvTicket is Context, DeVest, ReentrancyGuard {
     function supportsInterface(bytes4 /*interfaceId*/) external pure returns (bool){
         return false;
     }
+
+    function getPrice() external view returns (uint256) {
+        return _price;
+    }
+
+    function getPurchased() external view returns (uint256) {
+        return _purchased;
+    }
+
+    function getTotalSupply() external view returns (uint256) {
+        return _totalSupply;
+    }
+    
 }
