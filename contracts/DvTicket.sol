@@ -77,6 +77,10 @@ contract DvTicket is Context, DeVest, ReentrancyGuard, VestingToken {
         require(_msgSender() == ownerOf(ticketId), "Transfer caller is not owner");
         require(to != address(0), "Transfer to the zero address");
 
+        // cancel offer if ticket is offered for sale
+        if (isForSale2(ticketId))
+            _offeredTickets[ticketId] = address(0);
+
         _tickets[ticketId] = to;
         _balances[_msgSender()] -= 1;
         _balances[to] += 1;
@@ -90,14 +94,6 @@ contract DvTicket is Context, DeVest, ReentrancyGuard, VestingToken {
         require(ticketId < totalSupply, "Ticket sold out");
         require(_msgSender() != ownerOf(ticketId), "You already own this ticket");
         require(isForSale(ticketId), "Ticket not for sale");
-
-        // __allowance(_msgSender(), price);
-        // __transferFrom(_msgSender(), address(this), price);
-
-        // assigned ticket to buyer
-        // purchased++;
-        // _tickets[ticketId] = _msgSender();
-        // _balances[_msgSender()] += 1;
 
         // check if its original ticket or ticket offered for sale
         if(_offeredTickets[ticketId] != address(0)){
