@@ -5,18 +5,21 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/Context.sol";
 import "@devest/contracts/DeVest.sol";
+import "@devest/contracts/VestingToken.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/IERC721Metadata.sol";
 
-contract DvTicket is Context, DeVest, ReentrancyGuard {
+contract DvTicket is Context, DeVest, ReentrancyGuard, VestingToken {
 
-    event purchased(address indexed customer, uint256 indexed ticketId);
+    event booked(address indexed customer, uint256 indexed ticketId);
     event transferred(address indexed sender, address indexed reciver, uint256 indexed ticketId);
 
     // ---
 
-    uint256 private _price;
+    uint256 public price;
 
-    uint256 private _totalSupply;
-    uint256 private _purchased = 0;
+    uint256 public totalSupply;
+    uint256 public purchased = 0;
 
     // Mapping from token ID to owner address
     mapping(uint256 => address) private _tickets;
@@ -24,8 +27,9 @@ contract DvTicket is Context, DeVest, ReentrancyGuard {
     // Mapping owner address to token count
     mapping(address => uint256) private _balances;
 
-    // Vesting / Trading token reference
-    IERC20 internal _token;
+    // for exchange
+    mapping(uint256 => address) private _offeredTickets; // mapping of offered tickets to their owners
+    mapping(uint256 => uint256) private _offeredPrices; // mapping of offered tickets to their offered prices
 
     // Properties
     string internal _name;           // name of the tangible
@@ -35,10 +39,9 @@ contract DvTicket is Context, DeVest, ReentrancyGuard {
     /**
     */
     constructor(address _tokenAddress, string memory __name, string memory __symbol, string memory __tokenURI, address _factory, address _owner)
-    DeVest(_owner, _factory) {
+    DeVest(_owner, _factory) VestingToken(_tokenAddress) {
 
-        _token =  IERC20(_tokenAddress);
-        _symbol = string(abi.encodePacked("% ", __symbol));
+        _symbol =  __symbol;
         _name = __name;
         _tokenURI = __tokenURI;
     }
@@ -46,12 +49,12 @@ contract DvTicket is Context, DeVest, ReentrancyGuard {
     /**
      *  Initialize TST as tangible
      */
-    function initialize(uint tax, uint256 totalSupply, uint256 price) public onlyOwner nonReentrant virtual{
+    function initialize(uint tax, uint256 _totalSupply, uint256 _price) public onlyOwner nonReentrant virtual{
         require(tax >= 0 && tax <= 1000, 'Invalid tax value');
         require(totalSupply >= 0 && totalSupply <= 10000, 'Max 10 decimals');
 
-        _totalSupply = totalSupply;
-        _price = price;
+        totalSupply = _totalSupply;
+        price = _price;
 
         // set attributes
         _setRoyalties(tax, owner());
@@ -82,34 +85,78 @@ contract DvTicket is Context, DeVest, ReentrancyGuard {
     }
 
     // Purchase ticket
-    function purchase(uint256 ticketId) external takeFee payable {
-        require(_purchased < _totalSupply, "No more tickets available");
-        require(address(0) == ownerOf(ticketId), "Ticket not available");
+    function purchase(uint256 ticketId) external payable {
+        //require(address(0) == ownerOf(ticketId), "Ticket not available");
+        require(ticketId < totalSupply, "Ticket sold out");
+        require(_msgSender() != ownerOf(ticketId), "You already own this ticket");
+        require(isForSale(ticketId), "Ticket not for sale");
 
-        // check if enough escrow allowed and pick the cash
-        __allowance(_msgSender(), _price);
-        _token.transferFrom(_msgSender(), address(this), _price);
+        // __allowance(_msgSender(), price);
+        // __transferFrom(_msgSender(), address(this), price);
 
         // assigned ticket to buyer
-        _purchased++;
+        // purchased++;
+        // _tickets[ticketId] = _msgSender();
+        // _balances[_msgSender()] += 1;
+
+        // check if its original ticket or ticket offered for sale
+        if(_offeredTickets[ticketId] != address(0)){
+            __allowance(_msgSender(), _offeredPrices[ticketId]);
+            __transferFrom(_msgSender(), _offeredTickets[ticketId], _offeredPrices[ticketId]);
+
+            _balances[_offeredTickets[ticketId]] -= 1;
+            _offeredTickets[ticketId] = address(0);
+        } else {
+            require(address(0) == ownerOf(ticketId), "Ticket not available");
+            __allowance(_msgSender(), price);
+            __transferFrom(_msgSender(), address(this), price);
+            // assigned ticket to buyer
+            purchased++;
+        }
+
         _tickets[ticketId] = _msgSender();
         _balances[_msgSender()] += 1;
 
-        emit purchased(_msgSender(), ticketId);
+        emit booked(_msgSender(), ticketId);
+    }
+
+    function isForSale(uint256 ticketId) public view returns (bool) {
+        return _offeredTickets[ticketId] != address(0) || ownerOf(ticketId) == address(0);
+    }
+
+    function isForSale2(uint256 ticketId) public view returns (bool) {
+        return _offeredTickets[ticketId] != address(0);
+    }
+
+
+    function priceOf(uint256 ticketId) public view returns (uint256) {
+        return _offeredPrices[ticketId];
+    }
+
+    /**
+     *  Offer ticket for sales
+     */
+    function offer(uint256 ticketId, uint256 _price) public { //payable takeFee {
+        require(ownerOf(ticketId) == _msgSender(), "You don't own this ticket");
+        require(_price > 0, "Price must be greater than zero");
+        require(isForSale(ticketId) == false, "Already for sale");
+
+        _offeredTickets[ticketId] = msg.sender;
+        _offeredPrices[ticketId] = _price;
+    }
+
+    function cancel(uint256 ticketId) public {
+        require(ownerOf(ticketId) == _msgSender(), "You don't own this ticket");
+        require(isForSale(ticketId), "Ticket not for sale");
+
+        _offeredTickets[ticketId] = address(0);
     }
 
     /**
      *  Withdraw tokens from purchases from this contract
     */
     function withdraw() external onlyOwner {
-        _token.transfer(_owner, _token.balanceOf(address(this)));
-    }
-
-    /**
-     *  Internal token allowance
-     */
-    function __allowance(address account, uint256 amount) internal view {
-        require(_token.allowance(account, address(this)) >= amount, 'Insufficient allowance provided');
+        __transfer(_owner, __balanceOf(address(this)));
     }
 
     /**
@@ -119,7 +166,7 @@ contract DvTicket is Context, DeVest, ReentrancyGuard {
         return _tokenURI;
     }
 
-    function supportsInterface(bytes4 /*interfaceId*/) external pure returns (bool){
-        return false;
+    function supportsInterface(bytes4 interfaceId) external pure returns (bool){
+        return interfaceId == type(IERC721).interfaceId || interfaceId == type(IERC721Metadata).interfaceId;
     }
 }
