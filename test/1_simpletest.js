@@ -15,7 +15,7 @@ contract("Dv Ticket", accounts => {
 
         dvTicket = await dvTicketFactory.issue(token.address, "https://something", "HNK Orijent", "SN", { from: accounts[0] });
         dvTicket = await DvTicket.at(dvTicket.logs[0].args[1]);
-        await dvTicket.initialize(0, 100, 5, { from: accounts[0] });
+        await dvTicket.initialize(0, 6, 5, { from: accounts[0] });
     });
 
     it("purchase tickets", async () => {
@@ -41,10 +41,24 @@ contract("Dv Ticket", accounts => {
         assert.equal(balanceAfterWithdraw.toNumber(), balance.toNumber() + 5);
     });
 
+    it("Buy all other tickets to close presale", async () => {
+        await token.approve(dvTicket.address, 1000, {from: accounts[1]});
+        await dvTicket.purchase(0, {from: accounts[1]});
+        await dvTicket.purchase(1, {from: accounts[1]});
+        await dvTicket.purchase(2, {from: accounts[1]});
+        await dvTicket.purchase(3, {from: accounts[1]});
+        await dvTicket.purchase(4, {from: accounts[1]});
+
+        const balance = await dvTicket.balanceOf(accounts[1]);
+        assert.equal(balance.toNumber(), 6);
+
+        const preSale = await dvTicket.preSale.call();
+        assert.equal(preSale, false);
+    })
+
     it("Offer the ticket for sales", async () => {
         //const isForSale = await dvTicket.isForSale(5);
         //const isOwner = await dvTicket.ownerOf(5);
-
         await dvTicket.offer(5, 10, {from: accounts[1] });
 
         const ticket = await dvTicket.isForSale(5);
@@ -59,7 +73,7 @@ contract("Dv Ticket", accounts => {
         await dvTicket.purchase(5, {from: accounts[2]});
 
         const balance = await dvTicket.balanceOf(accounts[1]);
-        assert.equal(balance.toNumber(), 0);
+        assert.equal(balance.toNumber(), 5);
 
         const balanceNewOnwer = await dvTicket.balanceOf(accounts[2]);
         assert.equal(balanceNewOnwer.toNumber(), 1);

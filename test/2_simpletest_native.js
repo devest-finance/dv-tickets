@@ -11,7 +11,7 @@ contract("DvTicket Native", accounts => {
 
         dvTicket = await dvTicketFactory.issue("0x0000000000000000000000000000000000000000", "https://something", "HNK Orijent", "SN", { from: accounts[0] });
         dvTicket = await DvTicket.at(dvTicket.logs[0].args[1]);
-        await dvTicket.initialize(0, 100, 5, { from: accounts[0] });
+        await dvTicket.initialize(0, 6, 5, { from: accounts[0] });
     });
 
     it("purchase tickets", async () => {
@@ -36,6 +36,20 @@ contract("DvTicket Native", accounts => {
         //assert.equal(balanceAfterWithdraw, balance + 5);
     });
 
+    it("Buy all other tickets to close presale", async () => {
+        await dvTicket.purchase(0, {from: accounts[1], value : 5});
+        await dvTicket.purchase(1, {from: accounts[1], value : 5});
+        await dvTicket.purchase(2, {from: accounts[1], value : 5});
+        await dvTicket.purchase(3, {from: accounts[1], value : 5});
+        await dvTicket.purchase(4, {from: accounts[1], value : 5});
+
+        const balance = await dvTicket.balanceOf(accounts[1]);
+        assert.equal(balance.toNumber(), 6);
+
+        const preSale = await dvTicket.preSale.call();
+        assert.equal(preSale, false);
+    })
+
     it("Offer the ticket for sales", async () => {
         //const isForSale = await dvTicket.isForSale(5);
         //const isOwner = await dvTicket.ownerOf(5);
@@ -52,7 +66,7 @@ contract("DvTicket Native", accounts => {
         await dvTicket.purchase(5, {from: accounts[2], value: 10 });
 
         const balance = await dvTicket.balanceOf(accounts[1]);
-        assert.equal(balance.toNumber(), 0);
+        assert.equal(balance.toNumber(), 5);
 
         const balanceNewOnwer = await dvTicket.balanceOf(accounts[2]);
         assert.equal(balanceNewOnwer.toNumber(), 1);
