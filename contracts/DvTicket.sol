@@ -9,26 +9,32 @@ import "@devest/contracts/VestingToken.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/IERC721Metadata.sol";
 
+/**
+ * @title DvTicket Contract
+ * @author [Don Miguel] (DeVest 2025)
+ * @notice This contract manages the lifecycle of digital tickets for a tangible good.
+ *         It leverages the DeVest and VestingToken contracts from the DeVest library.
+ */
 contract DvTicket is Context, DeVest, ReentrancyGuard, VestingToken {
 
+    // Events emitted by the contract
     event purchased(address indexed customer, uint256 indexed ticketId);
     event transferred(address indexed sender, address indexed reciver, uint256 indexed ticketId);
     event offered(address indexed owner, uint256 indexed ticketId, uint256 price);
     event canceled(address indexed owner, uint256 indexed ticketId);
 
-
     // ---
-    uint256 public price;    // current price of ticket (smallest offered)
-    uint256 public totalSupply;     // total supply of tickets
-    uint256 public totalPurchased = 0;   // total tickets purchased
+    uint256 public price;                   // current price of ticket (smallest offered)
+    uint256 public totalSupply;             // total supply of tickets
+    uint256 public totalPurchased = 0;      // total tickets purchased
 
     // --- State
-    bool public preSale = true;     // while presale is active, tickets cannot be offered for sale
+    bool public preSale = true;             // while presale is active, tickets cannot be offered for sale
 
-    // Mapping from token ID to owner address
+    // Mapping of ticket IDs to owner addresses
     mapping(uint256 => address) private _tickets;
 
-    // Mapping owner address to token count
+    // Mapping of owner addresses to token count
     mapping(address => uint256) private _balances;
 
     // for trading
@@ -39,9 +45,9 @@ contract DvTicket is Context, DeVest, ReentrancyGuard, VestingToken {
     mapping(uint256 => Offer) private _market; // mapping of tickets to their owners
 
     // Properties
-    string internal _name;           // name of the tangible
-    string internal _symbol;         // symbol of the tangible
-    string internal _tokenURI;   // total supply of shares (10^decimals)
+    string internal _name;              // name of the tangible
+    string internal _symbol;            // symbol of the tangible
+    string internal _tokenURI;          // total supply of shares (10^decimals)
 
     /** */
     constructor(address _tokenAddress, string memory __name, string memory __symbol, string memory __tokenURI, address _factory, address _owner)
@@ -159,7 +165,6 @@ contract DvTicket is Context, DeVest, ReentrancyGuard, VestingToken {
         return _market[ticketId].price;
     }
 
-
     /**
      *  Cancel ticket offer
      */
@@ -189,4 +194,5 @@ contract DvTicket is Context, DeVest, ReentrancyGuard, VestingToken {
     function supportsInterface(bytes4 interfaceId) external pure returns (bool){
         return interfaceId == type(IERC721).interfaceId || interfaceId == type(IERC721Metadata).interfaceId;
     }
+
 }
