@@ -30,6 +30,7 @@ contract DvTicket is Context, DeVest, ReentrancyGuard, VestingToken {
 
     // --- State
     bool public preSale = true;             // while presale is active, tickets cannot be offered for sale
+    bool public tradable = false;           // while tradable is active, tickets can be traded
 
     // Mapping of ticket IDs to owner addresses
     mapping(uint256 => address) private _tickets;
@@ -61,12 +62,13 @@ contract DvTicket is Context, DeVest, ReentrancyGuard, VestingToken {
     /**
      *  Initialize TST as tangible
      */
-    function initialize(uint tax, uint256 _totalSupply, uint256 _price) public onlyOwner nonReentrant virtual{
+    function initialize(uint tax, uint256 _totalSupply, uint256 _price, bool _tradable) public onlyOwner nonReentrant virtual{
         require(tax >= 0 && tax <= 1000, 'Invalid tax value');
         require(totalSupply >= 0 && totalSupply <= 10000, 'Max 10 decimals');
 
         totalSupply = _totalSupply;
         price = _price;
+        tradable = _tradable;
 
         // set attributes
         _setRoyalties(tax, owner());
@@ -108,8 +110,7 @@ contract DvTicket is Context, DeVest, ReentrancyGuard, VestingToken {
     }
 
     // Purchase ticket
-    function purchase(uint256 ticketId) external payable {
-        //require(address(0) == ownerOf(ticketId), "Ticket not available");
+    function purchase(uint256 ticketId) external payable takeFee {
         require(ticketId < totalSupply, "Ticket sold out");
         require(_msgSender() != ownerOf(ticketId), "You already own this ticket");
         require(isForSale(ticketId), "Ticket not for sale");
@@ -127,7 +128,7 @@ contract DvTicket is Context, DeVest, ReentrancyGuard, VestingToken {
         } else {
             require(address(0) == ownerOf(ticketId), "Ticket not available");
             __allowance(_msgSender(), price);
-            __transferFrom(_msgSender(), address(this), price);
+            __transferFrom(_msgSender(), owner(), price);
             // assigned ticket to buyer
             totalPurchased++;
             // cancel preSale if all tickets are sold
@@ -140,13 +141,12 @@ contract DvTicket is Context, DeVest, ReentrancyGuard, VestingToken {
 
         emit purchased(_msgSender(), ticketId);
     }
-
-
     /**
      *  Offer ticket for sales
      */
-    function offer(uint256 ticketId, uint256 _price) public { //payable takeFee {
+    function offer(uint256 ticketId, uint256 _price) public payable takeFee {
         require(preSale == false, "Presale is active");
+        require(tradable == true, "Trading is disabled");
         require(ownerOf(ticketId) == _msgSender(), "You don't own this ticket");
         require(_price > 0, "Price must be greater than zero");
         require(isForSale(ticketId) == false, "Already for sale");
@@ -168,7 +168,7 @@ contract DvTicket is Context, DeVest, ReentrancyGuard, VestingToken {
     /**
      *  Cancel ticket offer
      */
-    function cancel(uint256 ticketId) public {
+    function cancel(uint256 ticketId) public payable takeFee {
         require(ownerOf(ticketId) == _msgSender(), "You don't own this ticket");
         require(isForSale(ticketId), "Ticket not for sale");
 
@@ -178,19 +178,15 @@ contract DvTicket is Context, DeVest, ReentrancyGuard, VestingToken {
     }
 
     /**
-     *  Withdraw tokens from purchases from this contract
-    */
-    function withdraw() external onlyOwner {
-        __transfer(_owner, __balanceOf(address(this)));
-    }
-
-    /**
     * @dev Returns the Uniform Resource Identifier (URI) for `tokenId` token.
      */
     function tokenURI(uint256 /*tokenId*/) external view returns (string memory){
         return _tokenURI;
     }
 
+    /**
+     * @dev See {IERC721Metadata-name}.
+     */
     function supportsInterface(bytes4 interfaceId) external pure returns (bool){
         return interfaceId == type(IERC721).interfaceId || interfaceId == type(IERC721Metadata).interfaceId;
     }

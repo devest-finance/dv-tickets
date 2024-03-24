@@ -15,12 +15,12 @@ contract("Dv Ticket", accounts => {
 
         dvTicket = await dvTicketFactory.issue(token.address, "https://something", "HNK Orijent", "SN", { from: accounts[0] });
         dvTicket = await DvTicket.at(dvTicket.logs[0].args[1]);
-        await dvTicket.initialize(0, 6, 5, { from: accounts[0] });
+        await dvTicket.initialize(0, 6, 5, true, { from: accounts[0] });
     });
 
     it("purchase tickets", async () => {
         await token.approve(dvTicket.address, 1000, {from: accounts[1]});
-        await dvTicket.purchase(5, {from: accounts[1]});
+        await dvTicket.purchase(5, {from: accounts[1], value: 1});
 
         const balance = await dvTicket.balanceOf(accounts[1]);
         assert.equal(balance.toNumber(), 1);
@@ -33,21 +33,18 @@ contract("Dv Ticket", accounts => {
         // check balance on contract
         const balance = await token.balanceOf(accounts[0]);
 
-        // withdraw
-        await dvTicket.withdraw({from: accounts[0]});
-
         // check balance on owner
         const balanceAfterWithdraw = await token.balanceOf(accounts[0]);
-        assert.equal(balanceAfterWithdraw.toNumber(), balance.toNumber() + 5);
+        assert.equal(balanceAfterWithdraw.toNumber(), balance.toNumber());
     });
 
     it("Buy all other tickets to close presale", async () => {
         await token.approve(dvTicket.address, 1000, {from: accounts[1]});
-        await dvTicket.purchase(0, {from: accounts[1]});
-        await dvTicket.purchase(1, {from: accounts[1]});
-        await dvTicket.purchase(2, {from: accounts[1]});
-        await dvTicket.purchase(3, {from: accounts[1]});
-        await dvTicket.purchase(4, {from: accounts[1]});
+        await dvTicket.purchase(0, {from: accounts[1], value: 1});
+        await dvTicket.purchase(1, {from: accounts[1], value: 1});
+        await dvTicket.purchase(2, {from: accounts[1], value: 1});
+        await dvTicket.purchase(3, {from: accounts[1], value: 1});
+        await dvTicket.purchase(4, {from: accounts[1], value: 1});
 
         const balance = await dvTicket.balanceOf(accounts[1]);
         assert.equal(balance.toNumber(), 6);

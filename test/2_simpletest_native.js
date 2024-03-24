@@ -11,7 +11,7 @@ contract("DvTicket Native", accounts => {
 
         dvTicket = await dvTicketFactory.issue("0x0000000000000000000000000000000000000000", "https://something", "HNK Orijent", "SN", { from: accounts[0] });
         dvTicket = await DvTicket.at(dvTicket.logs[0].args[1]);
-        await dvTicket.initialize(0, 6, 5, { from: accounts[0] });
+        await dvTicket.initialize(0, 6, 5, true, { from: accounts[0] });
     });
 
     it("purchase tickets", async () => {
@@ -27,9 +27,6 @@ contract("DvTicket Native", accounts => {
     it("Ticket fee was collected and transferred to owner", async () => {
         // check balance on contract
         const balance = parseInt(await web3.eth.getBalance(accounts[0]));
-
-        // withdraw
-        await dvTicket.withdraw({from: accounts[0]});
 
         // check balance on owner
         const balanceAfterWithdraw = parseInt(await web3.eth.getBalance(accounts[0]));
