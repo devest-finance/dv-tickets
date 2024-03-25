@@ -43,10 +43,10 @@ contract DvTicketFactory is Context {
             payable(_feeRecipient).transfer(_issueFee);
 
         // issue token
-        DvTicket token = new DvTicket(tradingTokenAddress, tokenURI, name, symbol, address(this), _msgSender());
+        DvTicket ticket = new DvTicket(tradingTokenAddress, name, symbol, tokenURI, address(this), _msgSender());
 
-        emit deployed(_msgSender(), address(token));
-        return address(token);
+        emit deployed(_msgSender(), address(ticket));
+        return address(ticket);
     }
 
     /**

@@ -12,7 +12,7 @@ module.exports = function(deployer) {
       deployer.deploy(DvTicketFactory)
           .then(() => DvTicketFactory.deployed())
           .then(async _instance => {
-              //await _instance.setFee(0, 0);
+              await _instance.setFee(0, 0);
           });
   }
 };

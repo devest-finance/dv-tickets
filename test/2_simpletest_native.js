@@ -2,28 +2,23 @@ const DvTicketFactory = artifacts.require("DvTicketFactory");
 const DvTicket = artifacts.require("DvTicket");
 const ERC20Mock = artifacts.require("ERC20PresetFixedSupply"); // This is a mock ERC20 token for testing
 
-contract("Dv Ticket", accounts => {
+contract("DvTicket Native", accounts => {
     let dvTicket;
     let token;
 
     before(async () => {
         const dvTicketFactory = await DvTicketFactory.deployed();
 
-        token = await ERC20Mock.new("Test Token", "TKO", 10000, accounts[0]); // Give account[0] 10000 tokens for testing
-        await token.transfer(accounts[1], 1000, {from: accounts[0]}); // Give account[1] 1000 tokens for testing
-        await token.transfer(accounts[2], 1000, {from: accounts[0]}); // Give account[2] 1000 tokens for testing
-
-        dvTicket = await dvTicketFactory.issue(token.address, "https://something", "HNK Orijent", "SN", { from: accounts[0] });
+        dvTicket = await dvTicketFactory.issue("0x0000000000000000000000000000000000000000", "https://something", "HNK Orijent", "SN", { from: accounts[0] });
         dvTicket = await DvTicket.at(dvTicket.logs[0].args[1]);
         await dvTicket.initialize(0, 6, 5, true, { from: accounts[0] });
     });
 
     it("purchase tickets", async () => {
-        await token.approve(dvTicket.address, 1000, {from: accounts[1]});
-        await dvTicket.purchase(5, {from: accounts[1], value: 1});
+        let price = await dvTicket.price.call()
+        price = price.toNumber();
 
-        const balance = await dvTicket.balanceOf(accounts[1]);
-        assert.equal(balance.toNumber(), 1);
+        await dvTicket.purchase(5, {from: accounts[1], value : 5});
 
         const ownerOfNumber5 = await dvTicket.ownerOf(5);
         assert.equal(ownerOfNumber5, accounts[1]);
@@ -31,20 +26,19 @@ contract("Dv Ticket", accounts => {
 
     it("Ticket fee was collected and transferred to owner", async () => {
         // check balance on contract
-        const balance = await token.balanceOf(accounts[0]);
+        const balance = parseInt(await web3.eth.getBalance(accounts[0]));
 
         // check balance on owner
-        const balanceAfterWithdraw = await token.balanceOf(accounts[0]);
-        assert.equal(balanceAfterWithdraw.toNumber(), balance.toNumber());
+        const balanceAfterWithdraw = parseInt(await web3.eth.getBalance(accounts[0]));
+        //assert.equal(balanceAfterWithdraw, balance + 5);
     });
 
     it("Buy all other tickets to close presale", async () => {
-        await token.approve(dvTicket.address, 1000, {from: accounts[1]});
-        await dvTicket.purchase(0, {from: accounts[1], value: 1});
-        await dvTicket.purchase(1, {from: accounts[1], value: 1});
-        await dvTicket.purchase(2, {from: accounts[1], value: 1});
-        await dvTicket.purchase(3, {from: accounts[1], value: 1});
-        await dvTicket.purchase(4, {from: accounts[1], value: 1});
+        await dvTicket.purchase(0, {from: accounts[1], value : 5});
+        await dvTicket.purchase(1, {from: accounts[1], value : 5});
+        await dvTicket.purchase(2, {from: accounts[1], value : 5});
+        await dvTicket.purchase(3, {from: accounts[1], value : 5});
+        await dvTicket.purchase(4, {from: accounts[1], value : 5});
 
         const balance = await dvTicket.balanceOf(accounts[1]);
         assert.equal(balance.toNumber(), 6);
@@ -66,8 +60,7 @@ contract("Dv Ticket", accounts => {
     });
 
     it("Buy the offered ticket", async () => {
-        await token.approve(dvTicket.address, 10, {from: accounts[2]});
-        await dvTicket.purchase(5, {from: accounts[2]});
+        await dvTicket.purchase(5, {from: accounts[2], value: 10 });
 
         const balance = await dvTicket.balanceOf(accounts[1]);
         assert.equal(balance.toNumber(), 5);

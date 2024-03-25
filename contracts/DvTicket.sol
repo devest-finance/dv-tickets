@@ -5,40 +5,56 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/Context.sol";
 import "@devest/contracts/DeVest.sol";
+import "@devest/contracts/VestingToken.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/IERC721Metadata.sol";
 
-contract DvTicket is Context, DeVest, ReentrancyGuard {
+/**
+ * @title DvTicket Contract
+ * @author [Don Miguel] (DeVest 2025)
+ * @notice This contract manages the lifecycle of digital tickets for a tangible good.
+ *         It leverages the DeVest and VestingToken contracts from the DeVest library.
+ */
+contract DvTicket is Context, DeVest, ReentrancyGuard, VestingToken {
 
+    // Events emitted by the contract
     event purchased(address indexed customer, uint256 indexed ticketId);
     event transferred(address indexed sender, address indexed reciver, uint256 indexed ticketId);
+    event offered(address indexed owner, uint256 indexed ticketId, uint256 price);
+    event canceled(address indexed owner, uint256 indexed ticketId);
 
     // ---
+    uint256 public price;                   // current price of ticket (smallest offered)
+    uint256 public totalSupply;             // total supply of tickets
+    uint256 public totalPurchased = 0;      // total tickets purchased
 
-    uint256 private _price;
+    // --- State
+    bool public preSale = true;             // while presale is active, tickets cannot be offered for sale
+    bool public tradable = false;           // while tradable is active, tickets can be traded
 
-    uint256 private _totalSupply;
-    uint256 private _purchased = 0;
-
-    // Mapping from token ID to owner address
+    // Mapping of ticket IDs to owner addresses
     mapping(uint256 => address) private _tickets;
 
-    // Mapping owner address to token count
+    // Mapping of owner addresses to token count
     mapping(address => uint256) private _balances;
 
-    // Vesting / Trading token reference
-    IERC20 internal _token;
+    // for trading
+    struct Offer {
+        address owner;
+        uint256 price;
+    }
+    mapping(uint256 => Offer) private _market; // mapping of tickets to their owners
 
     // Properties
-    string internal _name;           // name of the tangible
-    string internal _symbol;         // symbol of the tangible
-    string internal _tokenURI;   // total supply of shares (10^decimals)
+    string internal _name;              // name of the tangible
+    string internal _symbol;            // symbol of the tangible
+    string internal _tokenURI;          // total supply of shares (10^decimals)
 
-    /**
-    */
+    /** */
     constructor(address _tokenAddress, string memory __name, string memory __symbol, string memory __tokenURI, address _factory, address _owner)
-    DeVest(_owner, _factory) {
+    DeVest(_owner, _factory) VestingToken(_tokenAddress) {
 
-        _token =  IERC20(_tokenAddress);
-        _symbol = string(abi.encodePacked("% ", __symbol));
+        _symbol =  __symbol;
         _name = __name;
         _tokenURI = __tokenURI;
     }
@@ -46,17 +62,23 @@ contract DvTicket is Context, DeVest, ReentrancyGuard {
     /**
      *  Initialize TST as tangible
      */
-    function initialize(uint tax, uint256 totalSupply, uint256 price) public onlyOwner nonReentrant virtual{
+    function initialize(uint tax, uint256 _totalSupply, uint256 _price, bool _tradable) public onlyOwner nonReentrant virtual{
         require(tax >= 0 && tax <= 1000, 'Invalid tax value');
         require(totalSupply >= 0 && totalSupply <= 10000, 'Max 10 decimals');
 
-        _totalSupply = totalSupply;
-        _price = price;
+        totalSupply = _totalSupply;
+        price = _price;
+        tradable = _tradable;
 
         // set attributes
         _setRoyalties(tax, owner());
     }
 
+    /** --------------------------------------------------------------------------------------------------- */
+
+    /**
+     * @dev See {IERC721-balanceOf}.
+     */
     function ownerOf(uint256 tokenId) public view returns (address owner) {
         return _tickets[tokenId];
     }
@@ -69,10 +91,16 @@ contract DvTicket is Context, DeVest, ReentrancyGuard {
         return _balances[owner];
     }
 
-    // Transfer ticket
+    /**
+     * Transfer ticket via ERC721 or ERC21 standard
+     */
     function transfer(address to, uint256 ticketId) external payable takeFee {
         require(_msgSender() == ownerOf(ticketId), "Transfer caller is not owner");
         require(to != address(0), "Transfer to the zero address");
+
+        // cancel offer if ticket is offered for sale
+        if (isForSale(ticketId))
+            _market[ticketId] = Offer(address(0), 0);
 
         _tickets[ticketId] = to;
         _balances[_msgSender()] -= 1;
@@ -82,34 +110,71 @@ contract DvTicket is Context, DeVest, ReentrancyGuard {
     }
 
     // Purchase ticket
-    function purchase(uint256 ticketId) external takeFee payable {
-        require(_purchased < _totalSupply, "No more tickets available");
-        require(address(0) == ownerOf(ticketId), "Ticket not available");
+    function purchase(uint256 ticketId) external payable takeFee {
+        require(ticketId < totalSupply, "Ticket sold out");
+        require(_msgSender() != ownerOf(ticketId), "You already own this ticket");
+        require(isForSale(ticketId), "Ticket not for sale");
 
-        // check if enough escrow allowed and pick the cash
-        __allowance(_msgSender(), _price);
-        _token.transferFrom(_msgSender(), address(this), _price);
+        // check if its original ticket or ticket offered for sale
+        if(_market[ticketId].owner != address(0)){
+            __allowance(_msgSender(), _market[ticketId].price);
+            __transferFrom(_msgSender(), _market[ticketId].owner, _market[ticketId].price);
 
-        // assigned ticket to buyer
-        _purchased++;
+            // remove ticket from seller
+            _balances[_market[ticketId].owner] -= 1;
+
+            // reset ticket offer
+            _market[ticketId] = Offer(address(0), 0);
+        } else {
+            require(address(0) == ownerOf(ticketId), "Ticket not available");
+            __allowance(_msgSender(), price);
+            __transferFrom(_msgSender(), owner(), price);
+            // assigned ticket to buyer
+            totalPurchased++;
+            // cancel preSale if all tickets are sold
+            if (totalPurchased == totalSupply)
+                preSale = false;
+        }
+
         _tickets[ticketId] = _msgSender();
         _balances[_msgSender()] += 1;
 
         emit purchased(_msgSender(), ticketId);
     }
-
     /**
-     *  Withdraw tokens from purchases from this contract
-    */
-    function withdraw() external onlyOwner {
-        _token.transfer(_owner, _token.balanceOf(address(this)));
+     *  Offer ticket for sales
+     */
+    function offer(uint256 ticketId, uint256 _price) public payable takeFee {
+        require(preSale == false, "Presale is active");
+        require(tradable == true, "Trading is disabled");
+        require(ownerOf(ticketId) == _msgSender(), "You don't own this ticket");
+        require(_price > 0, "Price must be greater than zero");
+        require(isForSale(ticketId) == false, "Already for sale");
+
+        _market[ticketId] = Offer(_msgSender(), _price);
+
+        emit offered(_msgSender(), ticketId, _price);
+    }
+
+
+    function isForSale(uint256 ticketId) public view returns (bool) {
+        return _market[ticketId].owner != address(0) || ownerOf(ticketId) == address(0);
+    }
+
+    function priceOf(uint256 ticketId) public view returns (uint256) {
+        return _market[ticketId].price;
     }
 
     /**
-     *  Internal token allowance
+     *  Cancel ticket offer
      */
-    function __allowance(address account, uint256 amount) internal view {
-        require(_token.allowance(account, address(this)) >= amount, 'Insufficient allowance provided');
+    function cancel(uint256 ticketId) public payable takeFee {
+        require(ownerOf(ticketId) == _msgSender(), "You don't own this ticket");
+        require(isForSale(ticketId), "Ticket not for sale");
+
+        _market[ticketId] = Offer(address(0), 0);
+
+        emit canceled(_msgSender(), ticketId);
     }
 
     /**
@@ -119,20 +184,11 @@ contract DvTicket is Context, DeVest, ReentrancyGuard {
         return _tokenURI;
     }
 
-    function supportsInterface(bytes4 /*interfaceId*/) external pure returns (bool){
-        return false;
+    /**
+     * @dev See {IERC721Metadata-name}.
+     */
+    function supportsInterface(bytes4 interfaceId) external pure returns (bool){
+        return interfaceId == type(IERC721).interfaceId || interfaceId == type(IERC721Metadata).interfaceId;
     }
 
-    function getPrice() external view returns (uint256) {
-        return _price;
-    }
-
-    function getPurchased() external view returns (uint256) {
-        return _purchased;
-    }
-
-    function getTotalSupply() external view returns (uint256) {
-        return _totalSupply;
-    }
-    
 }
